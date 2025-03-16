@@ -482,7 +482,7 @@ update_ha_entities() {
     attributes="$attributes}"
 
     # Entity ID
-    local entity_id="sensor.SunSync_${inverter_serial}_${sensor_id}"
+    local entity_id="sensor.sunsync_${inverter_serial}_${sensor_id}"
 
     # Check if entity exists by getting its current state
     local entity_exists=0

@@ -1,4 +1,4 @@
-![](https://github.com/jujo1/SunSync_test/blob/main/logo.png)
+![](https://github.com/jujo1/SunSync_test/blob/main/images/logo.png)
 
 ## What this is:
 
@@ -30,4 +30,4 @@ This add-on was developed for Sunsynk Region 2 customers only. Supports multiple
 
 See for more information: https://github.com/jujo1/SunSync/blob/main/DOCS.md
 
-![](https://github.com/jujo1/SunSync/blob/main/SunSync_started.png)
+![](https://github.com/jujo1/SunSync/blob/main/images/sunsync_started.png)
