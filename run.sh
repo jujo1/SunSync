@@ -17,7 +17,7 @@ log_header() {
   local dt=$(date '+%d/%m/%Y %H:%M:%S')
   echo ""
   echo "------------------------------------------------------------------------------"
-  echo "-- SolarSynk - Log"
+  echo "-- SynSync - Log"
   echo "------------------------------------------------------------------------------"
   echo "Script execution date & time: $dt"
 }
@@ -482,7 +482,7 @@ update_ha_entities() {
     attributes="$attributes}"
 
     # Entity ID
-    local entity_id="sensor.solarsynk_${inverter_serial}_${sensor_id}"
+    local entity_id="sensor.SynSync_${inverter_serial}_${sensor_id}"
 
     # Check if entity exists by getting its current state
     local entity_exists=0
