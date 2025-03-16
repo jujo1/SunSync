@@ -1,4 +1,4 @@
-![](https://github.com/jujo1/SynSync_test/blob/main/logo.png)
+![](https://github.com/jujo1/SunSync_test/blob/main/logo.png)
 
 ## What this is:
 
@@ -22,12 +22,12 @@ at https://github.com/martinville/solarsynkv2
 
 ## How it works
 
-SynSync will fetch solar system data via the internet which was initially posted to the cloud via your sunsynk dongle. It does not have any physical
+SunSync will fetch solar system data via the internet which was initially posted to the cloud via your sunsynk dongle. It does not have any physical
 interfaces that are connected directly to your inverter.
 Please also note that this add-on only populates sensor values with data. It does not come with any cards to display information.
 
 This add-on was developed for Sunsynk Region 2 customers only. Supports multiple inverters.
 
-See for more information: https://github.com/jujo1/SynSync/blob/main/DOCS.md
+See for more information: https://github.com/jujo1/SunSync/blob/main/DOCS.md
 
-![](https://github.com/jujo1/SynSync/blob/main/SynSync_started.png)
+![](https://github.com/jujo1/SunSync/blob/main/SunSync_started.png)

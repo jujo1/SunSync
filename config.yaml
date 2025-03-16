@@ -1,4 +1,4 @@
-name: "SynSync"
+name: "SunSync"
 description: "Home Assistant add-on for syncing solar/inverter data from SynSynk.net"
 version: "1.0"
 slug: "sun_synch"
