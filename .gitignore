@@ -39,7 +39,7 @@ env/
 logs/
 
 # Local configuration file
-./config.yaml
+./config_local.yaml
 
 # Jupyter Notebook
 .ipynb_checkpoints
