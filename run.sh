@@ -60,6 +60,13 @@ main() {
     exit 1
   fi
 
+  # Check SUPERVISOR_TOKEN availability
+  if [ -n "$SUPERVISOR_TOKEN" ]; then
+    log_message "INFO" "Supervisor token found, length: ${#SUPERVISOR_TOKEN}"
+  else
+    log_message "INFO" "No Supervisor token available, will use long-lived token"
+  fi
+
   if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
     log_message "INFO" "Starting SunSync integration with verbose logging enabled"
   else
@@ -74,9 +81,22 @@ main() {
 
   # Check if we can connect to Home Assistant before starting
   if ! check_ha_connectivity; then
-    log_message "ERROR" "Cannot connect to Home Assistant. Please check your configuration."
-    exit 1
-  fi
+    # If supervisor token fails, try with long-lived token directly
+    if [ -n "$SUPERVISOR_TOKEN" ] && [ -n "$HA_TOKEN" ]; then
+      log_message "WARNING" "Supervisor API connection failed. Trying with direct connection using long-lived token."
+      unset SUPERVISOR_TOKEN
+
+      if check_ha_connectivity; then
+        log_message "INFO" "Direct connection successful. Proceeding with long-lived token."
+      else
+        log_message "ERROR" "Cannot connect to Home Assistant with either method. Please check your configuration."
+        exit 1
+      fi
+    else
+      log_message "ERROR" "Cannot connect to Home Assistant. Please check your configuration."
+      exit 1
+    fi
+  }
 
   # Initialize the SunSync environment (clean/prepare entities)
   if ! initialize_sunsync; then

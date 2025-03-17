@@ -171,10 +171,18 @@ check_ha_connectivity() {
 
   log_message "INFO" "Using API URL: $api_base_url"
 
-  local curl_cmd="curl -s -I -o /dev/null -w \"%{http_code}\" \
+  # For supervisor, we need to test a different endpoint
+  local test_endpoint
+  if [ -n "$SUPERVISOR_TOKEN" ]; then
+    test_endpoint="$api_base_url/states"
+  else
+    test_endpoint="$api_base_url/"
+  fi
+
+  local curl_cmd="curl -s -o /dev/null -w \"%{http_code}\" \
     -H \"$auth_header\" \
     -H \"Content-Type: application/json\" \
-    \"$api_base_url/\""
+    \"$test_endpoint\""
 
   if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
     log_message "DEBUG" "Command: $curl_cmd"
@@ -184,33 +192,40 @@ check_ha_connectivity() {
 
   if [ "$result" = "200" ] || [ "$result" = "201" ]; then
     log_message "INFO" "Successfully connected to Home Assistant API"
-    # Check if we can get states
-    local auth_test=$(curl -s -X GET \
-      -H "$auth_header" \
-      -H "Content-Type: application/json" \
-      "$api_base_url/states")
-
-    if [[ "$auth_test" == *"unauthorized"* ]] || [[ "$auth_test" == *"error"* ]]; then
-      log_message "ERROR" "Authentication failed. Your token may be invalid."
-      log_message "ERROR" "Response: $auth_test"
-      return 1
-    fi
-
     return 0
   else
     log_message "ERROR" "Failed to connect to Home Assistant API. HTTP Status: $result"
     log_message "ERROR" "Please verify your configuration and connectivity"
 
-    # Try a basic connection to see if the server is reachable
-    local basic_url
+    # Try a different approach for supervisor
     if [ -n "$SUPERVISOR_TOKEN" ]; then
-      basic_url="http://supervisor"
-    else
-      basic_url="$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT"
-    fi
+      log_message "INFO" "Trying alternative supervisor API endpoint..."
+      local alt_result=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "$auth_header" \
+        -H "Content-Type: application/json" \
+        "http://supervisor/core/api/config")
 
-    local basic_test=$(curl -s -I -o /dev/null -w "%{http_code}" "$basic_url/")
-    log_message "ERROR" "Basic connection test result (no auth): HTTP $basic_test"
+      if [ "$alt_result" = "200" ] || [ "$alt_result" = "201" ]; then
+        log_message "INFO" "Alternative supervisor endpoint works! Proceeding with this endpoint."
+        return 0
+      fi
+
+      # Try direct connection to Home Assistant using host IP if configured
+      if [ -n "$HA_IP" ] && [ -n "$HA_PORT" ]; then
+        log_message "INFO" "Trying direct connection to Home Assistant..."
+        local direct_result=$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "$auth_header" \
+          -H "Content-Type: application/json" \
+          "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/")
+
+        if [ "$direct_result" = "200" ] || [ "$direct_result" = "201" ]; then
+          log_message "INFO" "Direct connection to Home Assistant works! Will use direct URL."
+          # Force using direct connection
+          unset SUPERVISOR_TOKEN
+          return 0
+        fi
+      fi
+    }
 
     return 1
   fi
