@@ -26,9 +26,10 @@ source "/config.sh"
 source "/api.sh"
 source "/data.sh"
 source "/entities.sh"
+source "/init.sh"
 
 # Make sure the files are executable
-chmod +x /utils.sh /config.sh /api.sh /data.sh /entities.sh
+chmod +x /utils.sh /config.sh /api.sh /data.sh /entities.sh /init.sh
 
 # Get a value from the config file
 get_config_value() {
@@ -75,6 +76,11 @@ main() {
   if ! check_ha_connectivity; then
     log_message "ERROR" "Cannot connect to Home Assistant. Please check your configuration."
     exit 1
+  fi
+
+  # Initialize the SunSync environment (clean/prepare entities)
+  if ! initialize_sunsync; then
+    log_message "WARNING" "Initialization process encountered issues. Continuing anyway."
   fi
 
   # Main loop

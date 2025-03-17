@@ -5,6 +5,28 @@
 # Description: Functions for creating and updating Home Assistant entities
 # ==============================================================================
 
+# Determine which authentication method to use
+get_auth_header() {
+  # First try to use Supervisor token if available
+  if [ -n "$SUPERVISOR_TOKEN" ]; then
+    echo "Authorization: Bearer $SUPERVISOR_TOKEN"
+  else
+    # Fall back to the user-provided token
+    echo "Authorization: Bearer $HA_TOKEN"
+  fi
+}
+
+# Get the Base URL for API calls
+get_api_base_url() {
+  # When using Supervisor token, we can use the supervisor proxy
+  if [ -n "$SUPERVISOR_TOKEN" ]; then
+    echo "http://supervisor/core/api"
+  else
+    # Otherwise use the configured URL
+    echo "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api"
+  fi
+}
+
 # Update Home Assistant entities for a specific inverter
 update_ha_entities() {
   local inverter_serial=$1
@@ -12,6 +34,12 @@ update_ha_entities() {
 
   # Log the start of entity updates
   log_message "INFO" "Updating Home Assistant entities for inverter: $inverter_serial"
+
+  # Get the authentication header
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
+  log_message "INFO" "Using API base URL: $api_base_url"
 
   # Iterate through all sensor data points and create/update entities
   for key in "${!sensor_data[@]}"; do
@@ -60,7 +88,8 @@ update_ha_entities() {
       success=1  # Set to 1 to indicate failure
       log_message "ERROR" "Failed to update entity: $entity_id with value: $value"
     elif [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
-      log_message "DEBUG" "Updated entity: $entity_id with value: $value"
+      echo "$(date '+%d/%m/%Y %H:%M:%S') - Entity $entity_id already exists, updating..."
+      echo "$(date '+%d/%m/%Y %H:%M:%S') - Updated entity: $entity_id with value: $value"
     fi
   done
 
@@ -78,8 +107,12 @@ create_or_update_entity() {
   local unit_of_measurement=$4
   local device_class=$5
 
+  # Get the authentication header and API base URL
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
   # Build the Home Assistant API URL
-  local ha_api_url="$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/states/$entity_id"
+  local ha_api_url="$api_base_url/states/$entity_id"
 
   # Build proper attributes JSON
   local attributes="{\"friendly_name\": \"$friendly_name\""
@@ -106,7 +139,7 @@ create_or_update_entity() {
 
   # Make the API call to Home Assistant
   local response=$(curl -s -w "\n%{http_code}" -X POST \
-    -H "Authorization: Bearer $HA_TOKEN" \
+    -H "$auth_header" \
     -H "Content-Type: application/json" \
     -d "$payload" \
     "$ha_api_url")
@@ -130,26 +163,35 @@ create_or_update_entity() {
 
 # Function to check if Home Assistant is reachable
 check_ha_connectivity() {
-  log_message "INFO" "Testing connection to Home Assistant at $HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/"
+  log_message "INFO" "Testing connection to Home Assistant API"
+
+  # Get the authentication header and API base URL
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
+  log_message "INFO" "Using API URL: $api_base_url"
 
   local curl_cmd="curl -s -I -o /dev/null -w \"%{http_code}\" \
-    -H \"Authorization: Bearer $HA_TOKEN\" \
+    -H \"$auth_header\" \
     -H \"Content-Type: application/json\" \
-    \"$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/\""
+    \"$api_base_url/\""
 
-  log_message "DEBUG" "Command: $curl_cmd"
+  if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
+    log_message "DEBUG" "Command: $curl_cmd"
+  fi
+
   local result=$(eval $curl_cmd)
 
   if [ "$result" = "200" ] || [ "$result" = "201" ]; then
     log_message "INFO" "Successfully connected to Home Assistant API"
-    # Check the long-lived token is valid by attempting to get states
+    # Check if we can get states
     local auth_test=$(curl -s -X GET \
-      -H "Authorization: Bearer $HA_TOKEN" \
+      -H "$auth_header" \
       -H "Content-Type: application/json" \
-      "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/states")
+      "$api_base_url/states")
 
     if [[ "$auth_test" == *"unauthorized"* ]] || [[ "$auth_test" == *"error"* ]]; then
-      log_message "ERROR" "Authentication failed. Your long-lived token may be invalid."
+      log_message "ERROR" "Authentication failed. Your token may be invalid."
       log_message "ERROR" "Response: $auth_test"
       return 1
     fi
@@ -157,15 +199,17 @@ check_ha_connectivity() {
     return 0
   else
     log_message "ERROR" "Failed to connect to Home Assistant API. HTTP Status: $result"
-    log_message "ERROR" "Please verify:"
-    log_message "ERROR" "1. Home Assistant is running at $HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT"
-    log_message "ERROR" "2. Your Home_Assistant_IP setting ($HA_IP) is correct"
-    log_message "ERROR" "3. Your Home_Assistant_PORT setting ($HA_PORT) is correct"
-    log_message "ERROR" "4. Enable_HTTPS setting ($ENABLE_HTTPS) matches your Home Assistant configuration"
-    log_message "ERROR" "5. Your HA_LongLiveToken is valid and has not expired"
+    log_message "ERROR" "Please verify your configuration and connectivity"
 
-    # Try a basic connection without auth to see if the server is reachable
-    local basic_test=$(curl -s -I -o /dev/null -w "%{http_code}" "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/")
+    # Try a basic connection to see if the server is reachable
+    local basic_url
+    if [ -n "$SUPERVISOR_TOKEN" ]; then
+      basic_url="http://supervisor"
+    else
+      basic_url="$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT"
+    fi
+
+    local basic_test=$(curl -s -I -o /dev/null -w "%{http_code}" "$basic_url/")
     log_message "ERROR" "Basic connection test result (no auth): HTTP $basic_test"
 
     return 1
@@ -177,12 +221,16 @@ verify_entities_created() {
   local inverter_serial=$1
   local sample_entity="sensor.sunsync_${inverter_serial}_battery_soc"
 
+  # Get the authentication header and API base URL
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
   log_message "INFO" "Verifying entity creation by checking for sample entity: $sample_entity"
 
   local response=$(curl -s -w "\n%{http_code}" -X GET \
-    -H "Authorization: Bearer $HA_TOKEN" \
+    -H "$auth_header" \
     -H "Content-Type: application/json" \
-    "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/states/$sample_entity")
+    "$api_base_url/states/$sample_entity")
 
   local http_code=$(echo "$response" | tail -n1)
   local result=$(echo "$response" | head -n -1)
@@ -197,20 +245,23 @@ verify_entities_created() {
 
     # Try to get all entities
     local all_entities=$(curl -s -X GET \
-      -H "Authorization: Bearer $HA_TOKEN" \
+      -H "$auth_header" \
       -H "Content-Type: application/json" \
-      "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/states" | grep -c "entity_id")
+      "$api_base_url/states" | grep -c "entity_id" || echo "0")
 
     log_message "INFO" "Found approximately $all_entities entities total in Home Assistant"
     log_message "INFO" "If this number is 0, your token likely doesn't have correct permissions"
 
     # Search for any of our entities
     local our_entities=$(curl -s -X GET \
-      -H "Authorization: Bearer $HA_TOKEN" \
+      -H "$auth_header" \
       -H "Content-Type: application/json" \
-      "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/states" | grep -c "sunsync")
+      "$api_base_url/states" | grep -c "sunsync" || echo "0")
 
     log_message "INFO" "Found approximately $our_entities SunSync entities"
+
+    # Try to register the entity in the registry as a last resort
+    register_entity_in_registry "$inverter_serial" "$sample_entity"
 
     return 1
   else
@@ -219,29 +270,81 @@ verify_entities_created() {
   fi
 }
 
+# Register an entity in the registry
+register_entity_in_registry() {
+  local inverter_serial=$1
+  local entity_id=$2
+
+  # Get the authentication header and API base URL
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
+  log_message "INFO" "Attempting to register entity in registry: $entity_id"
+
+  local payload="{\"entity_id\": \"$entity_id\", \"name\": \"SunSync $inverter_serial Battery SOC\", \"device_class\": \"battery\"}"
+
+  local response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "$auth_header" \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+    "$api_base_url/config/entity_registry/register")
+
+  local http_code=$(echo "$response" | tail -n1)
+  local result=$(echo "$response" | head -n -1)
+
+  if [ "$http_code" != "200" ] && [ "$http_code" != "201" ]; then
+    log_message "WARNING" "Could not register entity in registry: $entity_id (HTTP $http_code)"
+    log_message "WARNING" "Response: $result"
+    return 1
+  else
+    log_message "INFO" "Successfully registered entity in registry: $entity_id"
+    return 0
+  fi
+}
+
 # Add a diagnostic function to debug Home Assistant configuration
 diagnose_ha_setup() {
   log_message "INFO" "===== DIAGNOSTIC INFORMATION ====="
-  log_message "INFO" "Home Assistant URL: $HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT"
-  log_message "INFO" "Token length: ${#HA_TOKEN}"
-  log_message "INFO" "Token starting characters: ${HA_TOKEN:0:5}..."
+
+  # Check which authentication method is available
+  if [ -n "$SUPERVISOR_TOKEN" ]; then
+    log_message "INFO" "Using Supervisor token for authentication"
+    log_message "INFO" "Token length: ${#SUPERVISOR_TOKEN}"
+    log_message "INFO" "API URL: http://supervisor/core/api"
+  else
+    log_message "INFO" "Using long-lived token for authentication"
+    log_message "INFO" "Home Assistant URL: $HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT"
+    log_message "INFO" "Token length: ${#HA_TOKEN}"
+    log_message "INFO" "Token starting characters: ${HA_TOKEN:0:5}..."
+  fi
+
+  # Show addon info
+  if command -v bashio >/dev/null 2>&1; then
+    log_message "INFO" "Add-on version: $(bashio::addon.version)"
+    log_message "INFO" "Add-on name: $(bashio::addon.name)"
+  fi
 
   # Check if we can access Home Assistant at all
   log_message "INFO" "Testing basic connectivity..."
-  local basic_conn=$(curl -s -I -o /dev/null -w "%{http_code}" "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/")
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
+  local basic_conn=$(curl -s -I -o /dev/null -w "%{http_code}" "$api_base_url/")
   log_message "INFO" "Basic connectivity: HTTP $basic_conn"
 
-  # Validate token format
-  if [[ ! "$HA_TOKEN" =~ ^[a-zA-Z0-9_\.\-]+$ ]]; then
-    log_message "WARNING" "Token contains potentially invalid characters"
+  # Validate token format if using long-lived token
+  if [ -z "$SUPERVISOR_TOKEN" ] && [ -n "$HA_TOKEN" ]; then
+    if [[ ! "$HA_TOKEN" =~ ^[a-zA-Z0-9_\.\-]+$ ]]; then
+      log_message "WARNING" "Token contains potentially invalid characters"
+    fi
   fi
 
   # Attempt to get API status
-  log_message "INFO" "Testing API access with token..."
+  log_message "INFO" "Testing API access..."
   local response=$(curl -s -w "\n%{http_code}" \
-    -H "Authorization: Bearer $HA_TOKEN" \
+    -H "$auth_header" \
     -H "Content-Type: application/json" \
-    "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/")
+    "$api_base_url/")
 
   local http_code=$(echo "$response" | tail -n1)
   local result=$(echo "$response" | head -n -1)
@@ -251,6 +354,22 @@ diagnose_ha_setup() {
     log_message "ERROR" "API access failed"
   else
     log_message "INFO" "API access successful"
+
+    # Check if we can see any entities
+    local entities_count=$(curl -s -X GET \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      "$api_base_url/states" | grep -c "entity_id" || echo "0")
+
+    log_message "INFO" "Found $entities_count entities in Home Assistant"
+
+    # Look for our entities
+    local our_entities=$(curl -s -X GET \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      "$api_base_url/states" | grep -c "sunsync" || echo "0")
+
+    log_message "INFO" "Found $our_entities SunSync entities in Home Assistant"
   fi
 
   log_message "INFO" "===== END DIAGNOSTIC INFORMATION ====="

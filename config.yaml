@@ -9,6 +9,7 @@ arch:
   - armhf
   - armv7
   - i386
+homeassistant_api: true
 
 options:
   sunsynk_user: ""
