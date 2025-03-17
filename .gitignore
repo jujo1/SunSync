@@ -41,6 +41,9 @@ logs/
 # Local configuration file
 config_local.yaml
 
+# Original run script
+run_orig.sh
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
