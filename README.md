@@ -30,3 +30,19 @@ This integration specifically targets **SunSynk Region 2** and supports setups w
 ## Documentation
 
 For detailed instructions, see [DOCS.md](github.com/jujo1/SunSync/blob/main/DOCS.md).
+
+## Version Management
+
+This repository uses git tags for version management. The version in `config.yaml` is automatically updated based on the highest semantic version tag available.
+
+### For Contributors
+
+1. After cloning this repository, run `./setup-hooks.sh` to install the git hooks
+2. When a new version is ready for release, create and push a new tag following semantic versioning:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+3. When you pull changes that include new tags, the version in `config.yaml` will automatically update

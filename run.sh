@@ -27,6 +27,9 @@ source "/api.sh"
 source "/data.sh"
 source "/entities.sh"
 
+# Make sure the files are executable
+chmod +x /utils.sh /config.sh /api.sh /data.sh /entities.sh
+
 # Get a value from the config file
 get_config_value() {
   local key=$1
@@ -44,23 +47,6 @@ get_config_value() {
   fi
 
   echo "$value"
-}
-
-# Log header with timestamp
-log_header() {
-  local dt=$(date '+%d/%m/%Y %H:%M:%S')
-  echo ""
-  echo "------------------------------------------------------------------------------"
-  echo "-- SunSync - Log"
-  echo "------------------------------------------------------------------------------"
-  echo "Script execution date & time: $dt"
-  echo "Version: $(get_config_value 'version')"
-}
-
-# Clean up old data files
-cleanup_old_data() {
-  log_message "INFO" "Cleaning up old data files"
-  rm -f pvindata.json griddata.json loaddata.json batterydata.json outputdata.json dcactemp.json inverterinfo.json settings.json token.json tmpcurllog.json
 }
 
 # Main program function that executes the full workflow
