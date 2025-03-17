@@ -1,6 +1,6 @@
 name: "SunSync"
 description: "Home Assistant add-on for syncing solar/inverter data from SynSynk.net"
-version: "1.2"
+version: "1.0.3"
 slug: "sunsync"
 init: false
 arch:
@@ -9,7 +9,7 @@ arch:
   - armhf
   - armv7
   - i386
-  
+
 options:
   sunsynk_user: ""
   sunsynk_pass: ""
@@ -20,7 +20,7 @@ options:
   Refresh_rate: 300
   Enable_HTTPS: false
   Enable_Verbose_Log: false
-  
+
 schema:
   sunsynk_user: str
   sunsynk_pass: password
@@ -31,6 +31,3 @@ schema:
   Refresh_rate: int
   Enable_HTTPS: bool
   Enable_Verbose_Log: bool
-  
-  
-

@@ -17,10 +17,25 @@ HTTP_CONNECT_TYPE="http"
 ENABLE_HTTPS=false
 ENABLE_VERBOSE_LOG=false
 VarCurrentDate=$(date '+%Y-%m-%d')
+VERSION="unknown"
+
+# Get version from Home Assistant add-on information
+get_version() {
+  # Use bashio to get the version from the add-on metadata
+  if command -v bashio >/dev/null 2>&1; then
+    VERSION=$(bashio::addon.version)
+    log_message "INFO" "Add-on version detected: $VERSION"
+  else
+    log_message "INFO" "Bashio not available, using default version"
+  fi
+}
 
 # Load configuration from Home Assistant add-on
 load_config() {
   log_message "INFO" "Loading configuration"
+
+  # Extract version information
+  get_version
 
   # Get configuration from Home Assistant
   SUNSYNK_USER=$(bashio::config 'sunsynk_user')
@@ -55,6 +70,7 @@ load_config() {
     log_message "INFO" "- Serial(s): $SUNSYNK_SERIAL"
     log_message "INFO" "- Home Assistant: $HA_IP:$HA_PORT"
     log_message "INFO" "- Refresh rate: $REFRESH_RATE seconds"
+    log_message "INFO" "- Version: $VERSION"
   else
     log_message "INFO" "Configuration loaded successfully"
   fi
