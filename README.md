@@ -1,33 +1,32 @@
-![](https://github.com/jujo1/SunSync_test/blob/main/images/logo.png)
+# SunSync API Home Assistant Integration
 
-## What this is:
+**Forked and Enhanced by:** [Julian Jones](github.com/jujo1)
+**Original Author:** [Martin Ville](github.com/martinville)
 
-SunSynk API Home Assistant Integration
+## Overview
 
-Original Author: martinville
-Forked by Author: jujo1
+SunSync is a Home Assistant integration designed to connect to the SunSynk (github.com/martinville
+) API, fetching solar system data to dynamically create and update sensor entities
+within Home Assistant.
 
-Description: Connects to the SunSynk API and creates/updates Home Assistant entities with solar system data
+## Why This Fork?
 
-## Reason for the fork:
+This fork by jujo1 enhances the original integration with:
 
-This is a fork of the original Sunsynk API integration for Home Assistant. The original project was created by Martin Ville and is available
-at https://github.com/martinville/solarsynkv2
+- Improved error handling and robust retry mechanisms for API calls
+- Dynamic creation of Home Assistant entities
+- Enhanced code structure and readability
+- Adoption of improved bash scripting practices
 
-- Improve error handling
-- Dynamically create Home Assistant entities
-- Follow better bash practices
-- Improve code structure and readability
-- Add better retry mechanisms for API calls
+## How SunSync Works
 
-## How it works
+SunSync obtains solar system data from the SunSynk cloud API, originally uploaded by your inverter via the SunSynk dongle. It has no direct physical interface
+with your inverter hardware.
 
-SunSync will fetch solar system data via the internet which was initially posted to the cloud via your sunsynk dongle. It does not have any physical
-interfaces that are connected directly to your inverter.
-Please also note that this add-on only populates sensor values with data. It does not come with any cards to display information.
+**Please note:** This integration only populates sensor data and does not include display cards.
 
-This add-on was developed for Sunsynk Region 2 customers only. Supports multiple inverters.
+This integration specifically targets **SunSynk Region 2** and supports setups with multiple inverters.
 
-See for more information: https://github.com/jujo1/SunSync/blob/main/DOCS.md
+## Documentation
 
-![](https://github.com/jujo1/SunSync/blob/main/images/sunsync_started.png)
+For detailed instructions, see [DOCS.md](github.com/jujo1/SunSync/blob/main/DOCS.md).
