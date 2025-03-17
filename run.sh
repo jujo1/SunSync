@@ -1,4 +1,6 @@
 #!/usr/bin/with-contenv bashio
+
+# ==============================================================================
 # SunSync Home Assistant Integration
 # Author: jujo1
 # Original Author: martinville
@@ -10,6 +12,7 @@
 # - api.sh: API communication
 # - data.sh: Data parsing and processing
 # - entities.sh: Home Assistant entity creation and management
+# ==============================================================================
 
 # Disable exit on error to prevent script from terminating on recoverable errors
 set +e
@@ -23,6 +26,25 @@ source "/config.sh"
 source "/api.sh"
 source "/data.sh"
 source "/entities.sh"
+
+# Get a value from the config file
+get_config_value() {
+  local key=$1
+  local default_value=$2
+  local value
+
+  # Check if config.json exists
+  if [ -f "/data/options.json" ]; then
+    value=$(jq -r ".$key // \"\"" /data/options.json)
+    if [ -z "$value" ] || [ "$value" == "null" ]; then
+      value=$default_value
+    fi
+  else
+    value=$default_value
+  fi
+
+  echo "$value"
+}
 
 # Log header with timestamp
 log_header() {

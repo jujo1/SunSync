@@ -1,5 +1,9 @@
 #!/bin/bash
-# SunSynk Integration - Entity Management Functions
+
+# ==============================================================================
+# Sunsync Home Assistant Integration
+# Entity Management Functions
+# ==============================================================================
 
 # Create Home Assistant device for the inverter if it doesn't exist
 create_device_if_needed() {

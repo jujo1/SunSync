@@ -1,5 +1,9 @@
 #!/bin/bash
-# SunSync Integration - Configuration Management
+
+# ==============================================================================
+# Sunsync Home Assistant Integration
+# Configuration Management
+# ==============================================================================
 
 # Global variables for configuration
 SUNSYNK_USER=""

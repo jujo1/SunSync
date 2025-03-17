@@ -1,5 +1,9 @@
 #!/bin/bash
-# SunSync Integration - API Communication Functions
+
+# ==============================================================================
+# Sunsync Home Assistant Integration
+# API Communication Functions
+# ==============================================================================
 
 # Global API variables
 SERVER_API_BEARER_TOKEN=""

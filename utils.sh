@@ -1,5 +1,9 @@
 #!/bin/bash
-# SunSync Integration - Utility Functions
+
+# ==============================================================================
+# SunSync Home Assistant Integration
+# Utility Functions
+# ==============================================================================
 
 # Log header with timestamp
 log_header() {

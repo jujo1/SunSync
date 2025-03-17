@@ -1,5 +1,9 @@
 #!/bin/bash
-# SunSynk Integration - Data Fetching and Parsing Functions
+
+# ==============================================================================
+# Sunsync Home Assistant Integration
+# Data Fetching and Parsing Functions
+# ==============================================================================
 
 # Global data storage - associative array
 declare -A sensor_data
