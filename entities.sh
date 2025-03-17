@@ -8,7 +8,7 @@
 # Update Home Assistant entities for a specific inverter
 update_ha_entities() {
   local inverter_serial=$1
-  local success=true
+  local success=0  # Using 0 for success as per bash convention
 
   # Log the start of entity updates
   log_message "INFO" "Updating Home Assistant entities for inverter: $inverter_serial"
@@ -21,7 +21,7 @@ update_ha_entities() {
 
     # Create or update the entity
     if ! create_or_update_entity "$entity_id" "$friendly_name" "$value"; then
-      success=false
+      success=1  # Set to 1 to indicate failure
       log_message "ERROR" "Failed to update entity: $entity_id with value: $value"
     elif [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
       log_message "DEBUG" "Updated entity: $entity_id with value: $value"
@@ -37,6 +37,25 @@ create_or_update_entity() {
   local friendly_name=$2
   local state=$3
 
+  # First, check if entity already exists
+  local entity_check=$(curl -s -X GET \
+    -H "Authorization: Bearer $SUPERVISOR_TOKEN" \
+    -H "Content-Type: application/json" \
+    "http://supervisor/core/api/states/$entity_id")
+
+  # Determine if entity exists or if we got an error response
+  local entity_exists=false
+  if [ -n "$entity_check" ] && [[ "$entity_check" != *"not found"* ]] && [[ "$entity_check" != *"error"* ]]; then
+    entity_exists=true
+    if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
+      log_message "DEBUG" "Entity $entity_id already exists, updating..."
+    fi
+  else
+    if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
+      log_message "DEBUG" "Entity $entity_id does not exist, creating new entity..."
+    fi
+  fi
+
   # Use Home Assistant API to create/update the entity
   local result=$(curl -s -X POST \
     -H "Authorization: Bearer $SUPERVISOR_TOKEN" \
@@ -46,6 +65,7 @@ create_or_update_entity() {
 
   # Check if the API call was successful
   if [ -z "$result" ] || [[ "$result" == *"error"* ]]; then
+    log_message "ERROR" "API call failed for entity $entity_id: $result"
     return 1
   else
     return 0
