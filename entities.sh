@@ -225,7 +225,7 @@ check_ha_connectivity() {
           return 0
         fi
       fi
-    }
+    fi
 
     return 1
   fi
