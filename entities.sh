@@ -18,6 +18,12 @@ get_auth_header() {
 
 # Get the Base URL for API calls
 get_api_base_url() {
+  # Use override if set
+  if [ -n "$API_BASE_URL_OVERRIDE" ]; then
+    echo "$API_BASE_URL_OVERRIDE"
+    return
+  fi
+
   # When using Supervisor token, we can use the supervisor proxy
   if [ -n "$SUPERVISOR_TOKEN" ]; then
     echo "http://supervisor/core/api"
@@ -165,6 +171,11 @@ create_or_update_entity() {
 check_ha_connectivity() {
   log_message "INFO" "Testing connection to Home Assistant API"
 
+  # First, try to detect and resolve Docker networking issues
+  if [ -z "$SUPERVISOR_TOKEN" ]; then
+    detect_docker_networking_issues
+  fi
+
   # Get the authentication header and API base URL
   local auth_header=$(get_auth_header)
   local api_base_url=$(get_api_base_url)
@@ -174,7 +185,7 @@ check_ha_connectivity() {
   # For supervisor, we need to test a different endpoint
   local test_endpoint
   if [ -n "$SUPERVISOR_TOKEN" ]; then
-    test_endpoint="$api_base_url/states"
+    test_endpoint="$api_base_url/config"  # Changed from /states to /config which is more reliable
   else
     test_endpoint="$api_base_url/"
   fi
@@ -192,6 +203,8 @@ check_ha_connectivity() {
 
   if [ "$result" = "200" ] || [ "$result" = "201" ]; then
     log_message "INFO" "Successfully connected to Home Assistant API"
+    # Check API version to ensure compatibility
+    check_ha_api_version
     return 0
   else
     log_message "ERROR" "Failed to connect to Home Assistant API. HTTP Status: $result"
@@ -199,16 +212,27 @@ check_ha_connectivity() {
 
     # Try a different approach for supervisor
     if [ -n "$SUPERVISOR_TOKEN" ]; then
-      log_message "INFO" "Trying alternative supervisor API endpoint..."
-      local alt_result=$(curl -s -o /dev/null -w "%{http_code}" \
-        -H "$auth_header" \
-        -H "Content-Type: application/json" \
-        "http://supervisor/core/api/config")
+      log_message "INFO" "Trying alternative supervisor API endpoints..."
 
-      if [ "$alt_result" = "200" ] || [ "$alt_result" = "201" ]; then
-        log_message "INFO" "Alternative supervisor endpoint works! Proceeding with this endpoint."
-        return 0
-      fi
+      # Try several common supervisor API endpoints
+      local endpoints=("http://supervisor/core/api/states" "http://supervisor/core/api/config" "http://supervisor/core/api")
+
+      for endpoint in "${endpoints[@]}"; do
+        log_message "INFO" "Trying endpoint: $endpoint"
+        local alt_result=$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "$auth_header" \
+          -H "Content-Type: application/json" \
+          "$endpoint")
+
+        if [ "$alt_result" = "200" ] || [ "$alt_result" = "201" ]; then
+          log_message "INFO" "Alternative supervisor endpoint works: $endpoint"
+          # Update the API_BASE_URL_OVERRIDE environment variable
+          export API_BASE_URL_OVERRIDE="${endpoint%/*}"  # Remove last path component
+          log_message "INFO" "Setting API_BASE_URL_OVERRIDE to $API_BASE_URL_OVERRIDE"
+          check_ha_api_version
+          return 0
+        fi
+      done
 
       # Try direct connection to Home Assistant using host IP if configured
       if [ -n "$HA_IP" ] && [ -n "$HA_PORT" ]; then
@@ -222,6 +246,9 @@ check_ha_connectivity() {
           log_message "INFO" "Direct connection to Home Assistant works! Will use direct URL."
           # Force using direct connection
           unset SUPERVISOR_TOKEN
+          # Set direct connection as the preferred method
+          export API_BASE_URL_OVERRIDE="$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api"
+          check_ha_api_version
           return 0
         fi
       fi
@@ -229,6 +256,64 @@ check_ha_connectivity() {
 
     return 1
   fi
+}
+
+# New function to check Home Assistant API version
+check_ha_api_version() {
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
+  # If we have an override API base URL, use it
+  if [ -n "$API_BASE_URL_OVERRIDE" ]; then
+    api_base_url="$API_BASE_URL_OVERRIDE"
+  fi
+
+  log_message "INFO" "Checking Home Assistant API version..."
+
+  # Try to get API version info
+  local response=$(curl -s -w "\n%{http_code}" \
+    -H "$auth_header" \
+    -H "Content-Type: application/json" \
+    "$api_base_url/")
+
+  local http_code=$(echo "$response" | tail -n1)
+  local result=$(echo "$response" | head -n -1)
+
+  if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+    # Extract version if possible
+    if [[ "$result" == *"version"* ]]; then
+      local version=$(echo "$result" | grep -o '"version": *"[^"]*"' | cut -d'"' -f4)
+      log_message "INFO" "Home Assistant API version: $version"
+
+      # Store the API version for later use
+      export HA_API_VERSION="$version"
+
+      # Determine correct entity registry endpoint based on version
+      determine_entity_registry_endpoint "$version"
+    else
+      log_message "WARNING" "Could not determine Home Assistant API version"
+    fi
+  else
+    log_message "WARNING" "Could not determine Home Assistant API version. HTTP status: $http_code"
+  fi
+}
+
+# New function to determine the correct entity registry endpoint
+determine_entity_registry_endpoint() {
+  local version="$1"
+
+  # Default endpoint for entity registry
+  ENTITY_REGISTRY_ENDPOINT="config/entity_registry/registry"
+
+  # For newer versions of Home Assistant (2023.x and above)
+  if [[ "$version" =~ ^202[3-9]\. ]]; then
+    ENTITY_REGISTRY_ENDPOINT="config/entity_registry/entity"
+    log_message "INFO" "Using modern entity registry endpoint: $ENTITY_REGISTRY_ENDPOINT"
+  else
+    log_message "INFO" "Using legacy entity registry endpoint: $ENTITY_REGISTRY_ENDPOINT"
+  fi
+
+  export ENTITY_REGISTRY_ENDPOINT
 }
 
 # Verify at least some entities were successfully created
@@ -296,13 +381,18 @@ register_entity_in_registry() {
 
   log_message "INFO" "Attempting to register entity in registry: $entity_id"
 
+  # Use the determined endpoint (or default if not set)
+  local endpoint="${ENTITY_REGISTRY_ENDPOINT:-config/entity_registry/entity}"
+
   local payload="{\"entity_id\": \"$entity_id\", \"name\": \"SunSync $inverter_serial Battery SOC\", \"device_class\": \"battery\"}"
+
+  log_message "INFO" "Using entity registry endpoint: $api_base_url/$endpoint"
 
   local response=$(curl -s -w "\n%{http_code}" -X POST \
     -H "$auth_header" \
     -H "Content-Type: application/json" \
     -d "$payload" \
-    "$api_base_url/config/entity_registry/register")
+    "$api_base_url/$endpoint")
 
   local http_code=$(echo "$response" | tail -n1)
   local result=$(echo "$response" | head -n -1)
@@ -310,6 +400,28 @@ register_entity_in_registry() {
   if [ "$http_code" != "200" ] && [ "$http_code" != "201" ]; then
     log_message "WARNING" "Could not register entity in registry: $entity_id (HTTP $http_code)"
     log_message "WARNING" "Response: $result"
+
+    # Try alternative endpoint if the first one failed
+    if [ "$endpoint" = "config/entity_registry/entity" ]; then
+      log_message "INFO" "Trying alternative entity registry endpoint..."
+      local alt_endpoint="config/entity_registry/registry"
+
+      response=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "$auth_header" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$api_base_url/$alt_endpoint")
+
+      http_code=$(echo "$response" | tail -n1)
+      result=$(echo "$response" | head -n -1)
+
+      if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+        log_message "INFO" "Successfully registered entity using alternative endpoint"
+        ENTITY_REGISTRY_ENDPOINT="$alt_endpoint"
+        return 0
+      fi
+    fi
+
     return 1
   else
     log_message "INFO" "Successfully registered entity in registry: $entity_id"
@@ -388,4 +500,79 @@ diagnose_ha_setup() {
   fi
 
   log_message "INFO" "===== END DIAGNOSTIC INFORMATION ====="
+}
+
+# Add a new function to detect and resolve Docker networking issues
+detect_docker_networking_issues() {
+  log_message "INFO" "Checking for Docker networking issues with Home Assistant connectivity"
+
+  # If we're already using Supervisor token, this shouldn't be an issue
+  if [ -n "$SUPERVISOR_TOKEN" ]; then
+    log_message "INFO" "Using Supervisor token - Docker networking should be handled automatically"
+    return 0
+  fi
+
+  # If we can already connect to HA, no need for this
+  if check_basic_connectivity "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api"; then
+    log_message "INFO" "Current HA_IP ($HA_IP) is accessible from the container"
+    return 0
+  fi
+
+  log_message "WARNING" "Cannot access Home Assistant at $HA_IP - this may be a Tailscale or Docker networking issue"
+
+  # Try to find Docker host IP
+  local docker_host_ip=""
+
+  # Method 1: Try default Docker gateway
+  docker_host_ip=$(ip route | grep default | cut -d' ' -f3 || echo "")
+  if [ -n "$docker_host_ip" ] && [ "$docker_host_ip" != "$HA_IP" ]; then
+    log_message "INFO" "Found potential Docker host IP: $docker_host_ip"
+    if check_basic_connectivity "$HTTP_CONNECT_TYPE://$docker_host_ip:$HA_PORT/api"; then
+      log_message "INFO" "Docker host IP works! Switching to $docker_host_ip"
+      export HA_IP="$docker_host_ip"
+      return 0
+    fi
+  fi
+
+  # Method 2: Try common Docker host IPs
+  local common_ips=("172.17.0.1" "192.168.1.1" "host.docker.internal")
+  for ip in "${common_ips[@]}"; do
+    if [ "$ip" != "$HA_IP" ]; then
+      log_message "INFO" "Trying common Docker host IP: $ip"
+      if check_basic_connectivity "$HTTP_CONNECT_TYPE://$ip:$HA_PORT/api"; then
+        log_message "INFO" "Found working Docker host IP: $ip"
+        export HA_IP="$ip"
+        return 0
+      fi
+    fi
+  done
+
+  # Method 3: Try reaching host.docker.internal hostname (works on newer Docker)
+  if command -v getent >/dev/null 2>&1; then
+    local host_internal=$(getent hosts host.docker.internal 2>/dev/null | awk '{ print $1 }')
+    if [ -n "$host_internal" ] && [ "$host_internal" != "$HA_IP" ]; then
+      log_message "INFO" "Found host.docker.internal IP: $host_internal"
+      if check_basic_connectivity "$HTTP_CONNECT_TYPE://$host_internal:$HA_PORT/api"; then
+        log_message "INFO" "host.docker.internal works! Switching to $host_internal"
+        export HA_IP="$host_internal"
+        return 0
+      fi
+    fi
+  fi
+
+  log_message "WARNING" "Could not find a working Docker host IP. Please manually set the correct IP in configuration."
+  return 1
+}
+
+# Helper function to check basic connectivity
+check_basic_connectivity() {
+  local url="$1"
+  local timeout=3
+
+  # Use curl with a short timeout to check if the URL is accessible
+  if curl -s --head --fail --connect-timeout "$timeout" "$url" >/dev/null 2>&1; then
+    return 0  # Success
+  else
+    return 1  # Failure
+  fi
 }
