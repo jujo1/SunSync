@@ -68,6 +68,15 @@ main() {
   log_message "INFO" "Using HTTP connect type: $HTTP_CONNECT_TYPE"
   log_message "INFO" "Refresh rate set to: $REFRESH_RATE seconds"
 
+  # Run diagnostics to identify any configuration issues
+  diagnose_ha_setup
+
+  # Check if we can connect to Home Assistant before starting
+  if ! check_ha_connectivity; then
+    log_message "ERROR" "Cannot connect to Home Assistant. Please check your configuration."
+    exit 1
+  fi
+
   # Main loop
   while true; do
     cleanup_old_data
@@ -91,6 +100,9 @@ main() {
                 log_message "INFO" "Successfully updated Home Assistant entities for inverter $inverter_serial"
               else
                 log_message "ERROR" "Failed to update some Home Assistant entities for inverter $inverter_serial"
+                log_message "ERROR" "This usually indicates a problem with the Home Assistant API connection"
+                log_message "ERROR" "Please check your configuration and network connection"
+                diagnose_ha_setup
               fi
             fi
           else
