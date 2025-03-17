@@ -20,7 +20,7 @@ create_device_if_needed() {
     \"connections\": [],
     \"identifiers\": [
       [
-        \"solarsynk\",
+        \"sunsync\",
         \"$inverter_serial\"
       ]
     ],
@@ -46,7 +46,7 @@ create_device_if_needed() {
   local mqtt_data="{
     \"service\": \"mqtt.publish\",
     \"data\": {
-      \"topic\": \"homeassistant/sensor/solarsynk_${inverter_serial}/config\",
+      \"topic\": \"homeassistant/sensor/sunsync_${inverter_serial}/config\",
       \"payload\": \"{\\\"device\\\":{\\\"identifiers\\\":[\\\"sunsynk_${inverter_serial}\\\"],\\\"manufacturer\\\":\\\"${inverter_brand}\\\",\\\"model\\\":\\\"${inverter_model}\\\",\\\"name\\\":\\\"SunSynk Inverter (${inverter_serial})\\\",\\\"sw_version\\\":\\\"${inverter_firmware}\\\"}}\",
       \"retain\": true
     }
@@ -74,7 +74,7 @@ create_entity() {
   fi
 
   # Entity ID
-  local entity_id="sensor.solarsynk_${inverter_serial}_${sensor_id}"
+  local entity_id="sensor.sunsync_${inverter_serial}_${sensor_id}"
 
   # Check if entity exists
   local entity_exists=0
@@ -141,7 +141,7 @@ create_entity() {
     fi
 
     # Add platform information
-    registry_data=$(echo $registry_data | sed 's/}$/,"platform":"solarsynk"}/')
+    registry_data=$(echo $registry_data | sed 's/}$/,"platform":"sunsync"}/')
 
     # Actually register the entity
     local register_response=$(curl -s -k -X POST \
@@ -170,8 +170,8 @@ create_entity() {
     local mqtt_data="{
       \"service\": \"mqtt.publish\",
       \"data\": {
-        \"topic\": \"homeassistant/sensor/solarsynk_${inverter_serial}/${sensor_id}/config\",
-        \"payload\": \"{\\\"device_class\\\":\\\"$device_class\\\",\\\"state_class\\\":\\\"$state_class\\\",\\\"unit_of_measurement\\\":\\\"$unit\\\",\\\"name\\\":\\\"$friendly_name\\\",\\\"state_topic\\\":\\\"solarsynk/${inverter_serial}/${sensor_id}\\\",\\\"unique_id\\\":\\\"solarsynk_${inverter_serial}_${sensor_id}\\\",\\\"device\\\":{\\\"identifiers\\\":[\\\"sunsynk_${inverter_serial}\\\"],\\\"name\\\":\\\"SunSynk Inverter (${inverter_serial})\\\"}}\",
+        \"topic\": \"homeassistant/sensor/sunsync_${inverter_serial}/${sensor_id}/config\",
+        \"payload\": \"{\\\"device_class\\\":\\\"$device_class\\\",\\\"state_class\\\":\\\"$state_class\\\",\\\"unit_of_measurement\\\":\\\"$unit\\\",\\\"name\\\":\\\"$friendly_name\\\",\\\"state_topic\\\":\\\"sunsync/${inverter_serial}/${sensor_id}\\\",\\\"unique_id\\\":\\\"sunsync_${inverter_serial}_${sensor_id}\\\",\\\"device\\\":{\\\"identifiers\\\":[\\\"sunsynk_${inverter_serial}\\\"],\\\"name\\\":\\\"SunSynk Inverter (${inverter_serial})\\\"}}\",
         \"retain\": true
       }
     }"
@@ -185,7 +185,7 @@ create_entity() {
     local mqtt_value="{
       \"service\": \"mqtt.publish\",
       \"data\": {
-        \"topic\": \"solarsynk/${inverter_serial}/${sensor_id}\",
+        \"topic\": \"sunsync/${inverter_serial}/${sensor_id}\",
         \"payload\": \"$sensor_value\",
         \"retain\": true
       }

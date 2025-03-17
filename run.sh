@@ -1,6 +1,7 @@
 #!/usr/bin/with-contenv bashio
-# SolarSynk Home Assistant Integration
-# Author: Original by martinville, refactored and modularized
+# SunSync Home Assistant Integration
+# Author: jujo1
+# Original Author: martinville
 # Description: Connects to the SunSynk API and creates/updates Home Assistant entities with solar system data
 #
 # This script coordinates the modules:
@@ -17,21 +18,21 @@ set +e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Source all modules
-source "$SCRIPT_DIR/utils.sh"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/api.sh"
-source "$SCRIPT_DIR/data.sh"
-source "$SCRIPT_DIR/entities.sh"
+source "/utils.sh"
+source "/config.sh"
+source "/api.sh"
+source "/data.sh"
+source "/entities.sh"
 
 # Log header with timestamp
 log_header() {
   local dt=$(date '+%d/%m/%Y %H:%M:%S')
   echo ""
   echo "------------------------------------------------------------------------------"
-  echo "-- SolarSynk - Log"
+  echo "-- SunSync - Log"
   echo "------------------------------------------------------------------------------"
   echo "Script execution date & time: $dt"
-  echo "Version: 2.1.23 (Modular Refactor)"
+  echo "Version: $(get_config_value 'version')"
 }
 
 # Clean up old data files
@@ -51,9 +52,9 @@ main() {
   fi
 
   if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
-    log_message "INFO" "Starting SolarSynk integration with verbose logging enabled"
+    log_message "INFO" "Starting SunSync integration with verbose logging enabled"
   else
-    log_message "INFO" "Starting SolarSynk integration"
+    log_message "INFO" "Starting SunSync integration"
   fi
 
   log_message "INFO" "Using HTTP connect type: $HTTP_CONNECT_TYPE"

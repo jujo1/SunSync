@@ -5,7 +5,7 @@
 
 ## Overview
 
-SunSync is a Home Assistant integration designed to connect to the SunSynk (github.com/martinville
+SunSync is a Home Assistant integration designed to connect to the SunSynk ((github.com/martinville
 ) API, fetching solar system data to dynamically create and update sensor entities
 within Home Assistant.
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# SunSynk Integration - API Communication Functions
+# SunSync Integration - API Communication Functions
 
 # Global API variables
 SERVER_API_BEARER_TOKEN=""

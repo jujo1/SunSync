@@ -1,5 +1,5 @@
 #!/bin/bash
-# SunSynk Integration - Configuration Management
+# SunSync Integration - Configuration Management
 
 # Global variables for configuration
 SUNSYNK_USER=""

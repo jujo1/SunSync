@@ -1,12 +1,12 @@
 #!/bin/bash
-# SunSynk Integration - Utility Functions
+# SunSync Integration - Utility Functions
 
 # Log header with timestamp
 log_header() {
   local dt=$(date '+%d/%m/%Y %H:%M:%S')
   echo ""
   echo "------------------------------------------------------------------------------"
-  echo "-- SolarSynk - Log"
+  echo "-- SunSync - Log"
   echo "------------------------------------------------------------------------------"
   echo "Script execution date & time: $dt"
 }
