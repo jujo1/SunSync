@@ -96,7 +96,7 @@ main() {
       log_message "ERROR" "Cannot connect to Home Assistant. Please check your configuration."
       exit 1
     fi
-  }
+  fi
 
   # Initialize the SunSync environment (clean/prepare entities)
   if ! initialize_sunsync; then
