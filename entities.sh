@@ -5,6 +5,9 @@
 # Description: Functions for creating and updating Home Assistant entities
 # ==============================================================================
 
+# Initialize variables to avoid unbound variable errors
+API_BASE_URL_OVERRIDE=""
+
 # Determine which authentication method to use
 get_auth_header() {
   # First try to use Supervisor token if available
@@ -171,11 +174,6 @@ create_or_update_entity() {
 check_ha_connectivity() {
   log_message "INFO" "Testing connection to Home Assistant API"
 
-  # First, try to detect and resolve Docker networking issues
-  if [ -z "$SUPERVISOR_TOKEN" ]; then
-    detect_docker_networking_issues
-  fi
-
   # Get the authentication header and API base URL
   local auth_header=$(get_auth_header)
   local api_base_url=$(get_api_base_url)
@@ -233,25 +231,6 @@ check_ha_connectivity() {
           return 0
         fi
       done
-
-      # Try direct connection to Home Assistant using host IP if configured
-      if [ -n "$HA_IP" ] && [ -n "$HA_PORT" ]; then
-        log_message "INFO" "Trying direct connection to Home Assistant..."
-        local direct_result=$(curl -s -o /dev/null -w "%{http_code}" \
-          -H "$auth_header" \
-          -H "Content-Type: application/json" \
-          "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api/")
-
-        if [ "$direct_result" = "200" ] || [ "$direct_result" = "201" ]; then
-          log_message "INFO" "Direct connection to Home Assistant works! Will use direct URL."
-          # Force using direct connection
-          unset SUPERVISOR_TOKEN
-          # Set direct connection as the preferred method
-          export API_BASE_URL_OVERRIDE="$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api"
-          check_ha_api_version
-          return 0
-        fi
-      fi
     fi
 
     return 1
@@ -502,69 +481,7 @@ diagnose_ha_setup() {
   log_message "INFO" "===== END DIAGNOSTIC INFORMATION ====="
 }
 
-# Add a new function to detect and resolve Docker networking issues
-detect_docker_networking_issues() {
-  log_message "INFO" "Checking for Docker networking issues with Home Assistant connectivity"
-
-  # If we're already using Supervisor token, this shouldn't be an issue
-  if [ -n "$SUPERVISOR_TOKEN" ]; then
-    log_message "INFO" "Using Supervisor token - Docker networking should be handled automatically"
-    return 0
-  fi
-
-  # If we can already connect to HA, no need for this
-  if check_basic_connectivity "$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT/api"; then
-    log_message "INFO" "Current HA_IP ($HA_IP) is accessible from the container"
-    return 0
-  fi
-
-  log_message "WARNING" "Cannot access Home Assistant at $HA_IP - this may be a Tailscale or Docker networking issue"
-
-  # Try to find Docker host IP
-  local docker_host_ip=""
-
-  # Method 1: Try default Docker gateway
-  docker_host_ip=$(ip route | grep default | cut -d' ' -f3 || echo "")
-  if [ -n "$docker_host_ip" ] && [ "$docker_host_ip" != "$HA_IP" ]; then
-    log_message "INFO" "Found potential Docker host IP: $docker_host_ip"
-    if check_basic_connectivity "$HTTP_CONNECT_TYPE://$docker_host_ip:$HA_PORT/api"; then
-      log_message "INFO" "Docker host IP works! Switching to $docker_host_ip"
-      export HA_IP="$docker_host_ip"
-      return 0
-    fi
-  fi
-
-  # Method 2: Try common Docker host IPs
-  local common_ips=("172.17.0.1" "192.168.1.1" "host.docker.internal")
-  for ip in "${common_ips[@]}"; do
-    if [ "$ip" != "$HA_IP" ]; then
-      log_message "INFO" "Trying common Docker host IP: $ip"
-      if check_basic_connectivity "$HTTP_CONNECT_TYPE://$ip:$HA_PORT/api"; then
-        log_message "INFO" "Found working Docker host IP: $ip"
-        export HA_IP="$ip"
-        return 0
-      fi
-    fi
-  done
-
-  # Method 3: Try reaching host.docker.internal hostname (works on newer Docker)
-  if command -v getent >/dev/null 2>&1; then
-    local host_internal=$(getent hosts host.docker.internal 2>/dev/null | awk '{ print $1 }')
-    if [ -n "$host_internal" ] && [ "$host_internal" != "$HA_IP" ]; then
-      log_message "INFO" "Found host.docker.internal IP: $host_internal"
-      if check_basic_connectivity "$HTTP_CONNECT_TYPE://$host_internal:$HA_PORT/api"; then
-        log_message "INFO" "host.docker.internal works! Switching to $host_internal"
-        export HA_IP="$host_internal"
-        return 0
-      fi
-    fi
-  fi
-
-  log_message "WARNING" "Could not find a working Docker host IP. Please manually set the correct IP in configuration."
-  return 1
-}
-
-# Helper function to check basic connectivity
+# Simple function to check basic connectivity
 check_basic_connectivity() {
   local url="$1"
   local timeout=3
