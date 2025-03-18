@@ -225,10 +225,17 @@ ha_api_call() {
 send_inverter_settings() {
   local inverter_sn=$1
   local settings_data=$2
+  local retry_count=0
 
   # Validate parameters
   if [ -z "$inverter_sn" ] || [ -z "$settings_data" ]; then
     log_message "ERROR" "Missing required parameters for send_inverter_settings"
+    return 1
+  fi
+
+  # Validate JSON format of settings_data
+  if ! echo "$settings_data" | jq empty 2>/dev/null; then
+    log_message "ERROR" "Invalid JSON format in settings data"
     return 1
   fi
 
@@ -242,44 +249,81 @@ send_inverter_settings() {
     echo "$settings_data"
   fi
 
-  # Make POST request to update inverter settings
-  api_call "POST" "$endpoint" "$output_file" \
-    "Content-Type: application/json" \
-    "authorization: Bearer $SERVER_API_BEARER_TOKEN" \
-    "-d $settings_data"
+  # Try with retry logic
+  while [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; do
+    # Make POST request to update inverter settings
+    api_call "POST" "$endpoint" "$output_file" \
+      "Content-Type: application/json" \
+      "authorization: Bearer $SERVER_API_BEARER_TOKEN" \
+      "-d $settings_data"
 
-  local status=$?
+    local status=$?
 
-  if [ $status -eq 0 ]; then
-    # Check if response file exists
-    if [ ! -f "$output_file" ]; then
-      log_message "ERROR" "Settings response file not found"
-      return 1
-    fi
-
-    # Check if response indicates success
-    local success
-    if ! success=$(jq -r '.success // "false"' "$output_file" 2>/dev/null); then
-      log_message "ERROR" "Failed to parse settings response"
-      return 1
-    fi
-
-    if [ "$success" == "true" ]; then
-      log_message "INFO" "Successfully updated inverter settings"
-    else
-      local error_msg
-      if ! error_msg=$(jq -r '.msg // "Unknown error"' "$output_file" 2>/dev/null); then
-        error_msg="Failed to parse error message"
+    if [ $status -eq 0 ]; then
+      # Check if response file exists
+      if [ ! -f "$output_file" ]; then
+        log_message "ERROR" "Settings response file not found"
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; then
+          log_message "INFO" "Retrying in $DEFAULT_RETRY_DELAY seconds..."
+          sleep $DEFAULT_RETRY_DELAY
+          continue
+        fi
+        return 1
       fi
-      log_message "ERROR" "Failed to update inverter settings: $error_msg"
-      return 1
-    fi
-  else
-    log_message "ERROR" "Failed to send settings to inverter $inverter_sn"
-    return 1
-  fi
 
-  return 0
+      # Verbose logging of response
+      if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
+        echo "Settings response:"
+        echo ------------------------------------------------------------------------------
+        cat "$output_file"
+        echo ------------------------------------------------------------------------------
+      fi
+
+      # Check if response indicates success
+      local success
+      if ! success=$(jq -r '.success // "false"' "$output_file" 2>/dev/null); then
+        log_message "ERROR" "Failed to parse settings response"
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; then
+          log_message "INFO" "Retrying in $DEFAULT_RETRY_DELAY seconds..."
+          sleep $DEFAULT_RETRY_DELAY
+          continue
+        fi
+        return 1
+      fi
+
+      if [ "$success" == "true" ]; then
+        log_message "INFO" "Successfully updated inverter settings"
+        return 0
+      else
+        local error_msg
+        if ! error_msg=$(jq -r '.msg // "Unknown error"' "$output_file" 2>/dev/null); then
+          error_msg="Failed to parse error message"
+        fi
+        log_message "ERROR" "Failed to update inverter settings: $error_msg"
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; then
+          log_message "INFO" "Retrying in $DEFAULT_RETRY_DELAY seconds..."
+          sleep $DEFAULT_RETRY_DELAY
+          continue
+        fi
+        return 1
+      fi
+    else
+      log_message "ERROR" "Failed to send settings to inverter $inverter_sn"
+      retry_count=$((retry_count + 1))
+      if [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; then
+        log_message "INFO" "Retrying in $DEFAULT_RETRY_DELAY seconds..."
+        sleep $DEFAULT_RETRY_DELAY
+      else
+        return 1
+      fi
+    fi
+  done
+
+  log_message "ERROR" "Failed to update inverter settings after $DEFAULT_MAX_RETRIES attempts"
+  return 1
 }
 
 # Example usage:

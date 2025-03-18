@@ -203,8 +203,22 @@ create_entity() {
     return 1
   fi
 
-  # Attempt to register the entity in the registry
-  register_entity_in_registry "$inverter_serial" "$entity_id" "$friendly_name" "$device_class"
+  return 0
+}
+
+# Function to register entities in Home Assistant registry
+register_entity_in_registry() {
+  local inverter_serial=$1
+  local entity_id=$2
+  local friendly_name=$3
+  local device_class=$4
+
+  # This is a placeholder for entity registration
+  # Home Assistant typically handles this automatically when entities are created
+
+  if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
+    log_message "DEBUG" "Registering entity in registry: $entity_id"
+  fi
 
   return 0
 }
@@ -212,8 +226,16 @@ create_entity() {
 # Create settings helper entity for inverter configuration
 create_settings_helper() {
   local inverter_serial=$1
-  local entity_id="input_text.${ENTITY_PREFIX}_${inverter_serial}_inverter_settings"
-  local friendly_name="${ENTITY_PREFIX^} ${inverter_serial} Settings"
+  local entity_id
+  local friendly_name
+
+  if [ "$INCLUDE_SERIAL_IN_NAME" = "true" ]; then
+    entity_id="input_text.${ENTITY_PREFIX}_${inverter_serial}_inverter_settings"
+    friendly_name="${ENTITY_PREFIX^} ${inverter_serial} Settings"
+  else
+    entity_id="input_text.${ENTITY_PREFIX}_inverter_settings"
+    friendly_name="${ENTITY_PREFIX^} Settings"
+  fi
 
   # Validate parameter
   if [ -z "$inverter_serial" ]; then
@@ -247,85 +269,84 @@ create_settings_helper() {
   if [ "$entity_exists" = false ]; then
     log_message "INFO" "Creating settings helper entity: $entity_id"
 
-    # First, create the helper via config flow API
-    local creation_payload="{\"flow_id\": \"${RANDOM}${RANDOM}\", \"handler\": \"input_text\", \"name\": \"${friendly_name}\", \"max\": 1024, \"min\": 0, \"mode\": \"text\", \"initial\": \"\"}"
-
-    # Step 1: Initialize config flow
-    local flow_id_result=""
-    flow_id_result=$(curl -s -X POST \
+    # Method 1: Try using the input_text service directly first
+    local direct_result=$(curl -s -X POST \
       -H "$auth_header" \
       -H "Content-Type: application/json" \
-      -d "{\"handler\": \"input_text\"}" \
-      "$api_base_url/config/config_entries/flow")
+      -d "{\"name\": \"${friendly_name}\", \"initial\": \"\"}" \
+      "$api_base_url/services/input_text/reload")
 
-    if [ -z "$flow_id_result" ]; then
-      log_message "ERROR" "Failed to initialize config flow for input_text entity"
-      return 1
-    fi
-
-    # Extract flow_id from result
-    local flow_id=""
-    if ! flow_id=$(echo "$flow_id_result" | jq -r '.flow_id // empty' 2>/dev/null); then
-      log_message "ERROR" "Failed to parse flow_id from response"
-      return 1
-    fi
-
-    if [ -z "$flow_id" ]; then
-      log_message "ERROR" "Empty flow_id received"
-      return 1
-    }
-
-    # Step 2: Configure the input_text entity
-    local config_payload="{
-      \"name\": \"${friendly_name}\",
-      \"max\": 1024,
-      \"min\": 0,
-      \"mode\": \"text\",
-      \"initial\": \"\"
-    }"
-
-    local config_result=""
-    config_result=$(curl -s -X POST \
-      -H "$auth_header" \
-      -H "Content-Type: application/json" \
-      -d "$config_payload" \
-      "$api_base_url/config/config_entries/flow/$flow_id")
-
-    if [ -z "$config_result" ] || [[ "$config_result" == *"error"* ]]; then
-      log_message "ERROR" "Failed to configure input_text entity: ${config_result:-No response}"
-      return 1
-    }
-
-    # Step 3: Create the entity
-    curl -s -X POST \
-      -H "$auth_header" \
-      -H "Content-Type: application/json" \
-      -d "{}" \
-      "$api_base_url/config/config_entries/flow/$flow_id/finish"
-
-    # Wait briefly for entity to be created
+    # Wait briefly
     sleep 2
 
-    # Step 4: Set the initial empty value
-    curl -s -X POST \
-      -H "$auth_header" \
-      -H "Content-Type: application/json" \
-      -d "{\"entity_id\": \"$entity_id\", \"value\": \"\"}" \
-      "$api_base_url/services/input_text/set_value"
-
-    # Verify entity was created
-    local verify_check=""
-    verify_check=$(curl -s -X GET \
+    # Check if entity was created
+    local check_result=""
+    check_result=$(curl -s -X GET \
       -H "$auth_header" \
       -H "Content-Type: application/json" \
       "$api_base_url/states/$entity_id")
 
-    if [ -z "$verify_check" ] || [[ "$verify_check" == *"not found"* ]]; then
-      log_message "WARNING" "Failed to verify settings helper entity was created: $entity_id"
-      return 1
-    } else {
-      log_message "INFO" "Settings helper entity created successfully: $entity_id"
-    }
+    # If not created, try Method 2: Using configuration.yaml
+    if [ -z "$check_result" ] || [[ "$check_result" == *"not found"* ]]; then
+      log_message "INFO" "Direct creation didn't work, trying through REST API helper..."
+
+      # Step 1: Initialize config flow
+      local flow_result=$(curl -s -X POST \
+        -H "$auth_header" \
+        -H "Content-Type: application/json" \
+        -d "{\"handler\": \"input_text\"}" \
+        "$api_base_url/config/config_entries/flow")
+
+      local flow_id=""
+      flow_id=$(echo "$flow_result" | grep -o '"flow_id":"[^"]*"' | cut -d'"' -f4)
+
+      if [ -z "$flow_id" ]; then
+        log_message "ERROR" "Failed to initialize config flow for input_text entity"
+        return 1
+      fi
+
+      # Step 2: Configure the input_text entity
+      local config_payload="{\"name\": \"${friendly_name}\", \"max\": 1024, \"min\": 0, \"mode\": \"text\", \"initial\": \"\"}"
+
+      local config_result=$(curl -s -X POST \
+        -H "$auth_header" \
+        -H "Content-Type: application/json" \
+        -d "$config_payload" \
+        "$api_base_url/config/config_entries/flow/$flow_id")
+
+      # Step 3: Confirm and create
+      local create_result=$(curl -s -X POST \
+        -H "$auth_header" \
+        -H "Content-Type: application/json" \
+        -d "{}" \
+        "$api_base_url/config/config_entries/flow/$flow_id/finish")
+
+      # Wait for entity to be created
+      sleep 3
+    fi
+
+    # Method 3: If all else fails, create a dummy sensor and instruct user
+    local final_check=""
+    final_check=$(curl -s -X GET \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      "$api_base_url/states/$entity_id")
+
+    if [ -z "$final_check" ] || [[ "$final_check" == *"not found"* ]]; then
+      log_message "WARNING" "Failed to automatically create the input_text helper entity."
+      log_message "INFO" "Creating temporary state for: $entity_id"
+
+      # Create a standard entity as placeholder
+      curl -s -X POST \
+        -H "$auth_header" \
+        -H "Content-Type: application/json" \
+        -d "{\"state\": \"\", \"attributes\": {\"friendly_name\": \"${friendly_name}\"}}" \
+        "$api_base_url/states/$entity_id"
+
+      log_message "NOTICE" "Please manually create an input text helper named '${friendly_name}' in Home Assistant UI."
+    else
+      log_message "INFO" "Settings helper entity created or already exists: $entity_id"
+    fi
   else
     log_message "INFO" "Settings helper entity already exists: $entity_id"
   fi
