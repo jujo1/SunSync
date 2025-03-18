@@ -23,6 +23,9 @@ initialize_sunsync() {
 
     # Check for existing entities and only create what's missing
     check_and_create_entities "$inverter_serial"
+
+    # Create or check for the settings helper entity
+    create_settings_helper "$inverter_serial"
   done
   unset IFS
 
@@ -202,6 +205,65 @@ create_entity() {
 
   # Attempt to register the entity in the registry
   register_entity_in_registry "$inverter_serial" "$entity_id" "$friendly_name" "$device_class"
+
+  return 0
+}
+
+# Create settings helper entity for inverter configuration
+create_settings_helper() {
+  local inverter_serial=$1
+  local entity_id="input_text.${ENTITY_PREFIX}_${inverter_serial}_inverter_settings"
+  local friendly_name="${ENTITY_PREFIX^} ${inverter_serial} Settings"
+
+  # Get the authentication header and API base URL
+  local auth_header=$(get_auth_header)
+  local api_base_url=$(get_api_base_url)
+
+  log_message "INFO" "Checking for settings helper entity: $entity_id"
+
+  # Check if entity already exists
+  local entity_check=$(curl -s -X GET \
+    -H "$auth_header" \
+    -H "Content-Type: application/json" \
+    "$api_base_url/states/$entity_id")
+
+  if [[ "$entity_check" == *"not found"* ]] || [[ -z "$entity_check" ]]; then
+    log_message "INFO" "Creating settings helper entity: $entity_id"
+
+    # Create the input_text helper via Home Assistant API
+    local payload="{
+      \"name\": \"${friendly_name}\",
+      \"icon\": \"mdi:solar-power-variant\",
+      \"max\": 1024,
+      \"min\": 0,
+      \"mode\": \"text\",
+      \"initial\": \"\"
+    }"
+
+    local result=$(curl -s -X POST \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      -d "$payload" \
+      "$api_base_url/services/input_text/reload")
+
+    # Helper creation, then set its initial state
+    curl -s -X POST \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      -d "{\"entity_id\": \"$entity_id\"}" \
+      "$api_base_url/services/input_text/create"
+
+    # Set the initial empty value
+    curl -s -X POST \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      -d "{\"entity_id\": \"$entity_id\", \"value\": \"\"}" \
+      "$api_base_url/services/input_text/set_value"
+
+    log_message "INFO" "Settings helper entity created: $entity_id"
+  else
+    log_message "INFO" "Settings helper entity already exists: $entity_id"
+  fi
 
   return 0
 }

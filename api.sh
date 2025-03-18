@@ -169,3 +169,48 @@ ha_api_call() {
 
   api_call "$method" "$url" "$output_file" "${headers[@]}"
 }
+
+# Send settings to Sunsynk inverter via API
+send_inverter_settings() {
+  local inverter_sn=$1
+  local settings_data=$2
+  local endpoint="https://api.sunsynk.net/api/v1/inverter/$inverter_sn/settings"
+  local output_file="inverter_settings_response.json"
+
+  log_message "INFO" "Sending settings to inverter $inverter_sn"
+
+  if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
+    echo "Sending settings data:"
+    echo "$settings_data"
+  fi
+
+  # Make POST request to update inverter settings
+  api_call "POST" "$endpoint" "$output_file" \
+    "Content-Type: application/json" \
+    "authorization: Bearer $SERVER_API_BEARER_TOKEN" \
+    "-d $settings_data"
+
+  local status=$?
+
+  if [ $status -eq 0 ]; then
+    # Check if response indicates success
+    if [ -f "$output_file" ]; then
+      local success=$(jq -r '.success' "$output_file" 2>/dev/null)
+      if [ "$success" == "true" ]; then
+        log_message "INFO" "Successfully updated inverter settings"
+      else
+        local error_msg=$(jq -r '.msg // "Unknown error"' "$output_file" 2>/dev/null)
+        log_message "ERROR" "Failed to update inverter settings: $error_msg"
+        return 1
+      fi
+    fi
+  else
+    log_message "ERROR" "Failed to send settings to inverter $inverter_sn"
+    return 1
+  fi
+
+  return 0
+}
+
+# Example usage:
+# send_inverter_settings "INV123456789" '{"workMode":1,"gridChargeEnable":true,"batteryType":1,"batteryCapacity":200}'
