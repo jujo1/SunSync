@@ -21,8 +21,8 @@ options:
   Refresh_rate: 300
   Enable_HTTPS: false
   Enable_Verbose_Log: false
-  entity_prefix: "sunsync"
-  include_serial_in_name: true
+  Entity_Prefix: "sunsync"
+  Include_Serial_In_Name: true
 
 schema:
   sunsynk_user: str
@@ -34,5 +34,5 @@ schema:
   Refresh_rate: int
   Enable_HTTPS: bool
   Enable_Verbose_Log: bool
-  entity_prefix: str
-  include_serial_in_name: bool
+  Entity_Prefix: str
+  Include_Serial_In_Name: bool

@@ -49,8 +49,8 @@ load_config() {
   REFRESH_RATE=$(bashio::config 'Refresh_rate')
   ENABLE_HTTPS=$(bashio::config 'Enable_HTTPS')
   ENABLE_VERBOSE_LOG=$(bashio::config 'Enable_Verbose_Log')
-  ENTITY_PREFIX=$(bashio::config 'entity_prefix')
-  INCLUDE_SERIAL_IN_NAME=$(bashio::config 'include_serial_in_name')
+  ENTITY_PREFIX=$(bashio::config 'Entity_Prefix')
+  INCLUDE_SERIAL_IN_NAME=$(bashio::config 'Include_Serial_In_Name')
 
   # Set proper HTTP connect type based on HTTPS setting
   if [ "$ENABLE_HTTPS" == "true" ]; then

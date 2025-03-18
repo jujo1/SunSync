@@ -36,19 +36,19 @@ initialize_sunsync() {
 # Check for existing entities and create only what's missing
 check_and_create_entities() {
   local inverter_serial=$1
-  local entity_prefix="sensor.${ENTITY_PREFIX}_${inverter_serial}_"
+  local Entity_Prefix="sensor.${ENTITY_PREFIX}_${inverter_serial}_"
 
   # Get the authentication header and API base URL
   local auth_header=$(get_auth_header)
   local api_base_url=$(get_api_base_url)
 
-  log_message "INFO" "Checking for existing entities with prefix: $entity_prefix"
+  log_message "INFO" "Checking for existing entities with prefix: $Entity_Prefix"
 
   # Get a list of all entities
   local all_entities=$(curl -s -X GET \
     -H "$auth_header" \
     -H "Content-Type: application/json" \
-    "$api_base_url/states" | jq -r '.[].entity_id' | grep -c "^$entity_prefix" || echo "0")
+    "$api_base_url/states" | jq -r '.[].entity_id' | grep -c "^$Entity_Prefix" || echo "0")
 
   log_message "INFO" "Found $all_entities existing entities for $inverter_serial"
 
