@@ -8,6 +8,11 @@
 # Initialize variables to avoid unbound variable errors
 API_BASE_URL_OVERRIDE=""
 
+# Default configuration for entity naming
+# These values can be overridden in the add-on configuration
+ENTITY_PREFIX="${ENTITY_PREFIX:-sunsync}"
+INCLUDE_SERIAL_IN_NAME="${INCLUDE_SERIAL_IN_NAME:-true}"
+
 # Determine which authentication method to use
 get_auth_header() {
   # First try to use Supervisor token if available
@@ -44,6 +49,9 @@ update_ha_entities() {
   # Log the start of entity updates
   log_message "INFO" "Updating Home Assistant entities for inverter: $inverter_serial"
 
+  # Log entity naming configuration
+  log_message "INFO" "Entity prefix: $ENTITY_PREFIX, Include serial in name: $INCLUDE_SERIAL_IN_NAME"
+
   # Get the authentication header
   local auth_header=$(get_auth_header)
   local api_base_url=$(get_api_base_url)
@@ -53,8 +61,22 @@ update_ha_entities() {
   # Iterate through all sensor data points and create/update entities
   for key in "${!sensor_data[@]}"; do
     local value="${sensor_data[$key]}"
-    local entity_id="sensor.sunsync_${inverter_serial}_${key}"
-    local friendly_name="SunSync ${inverter_serial} ${key}"
+
+    # Create entity_id based on configuration
+    local entity_id
+    if [ "$INCLUDE_SERIAL_IN_NAME" = "true" ]; then
+      entity_id="sensor.${ENTITY_PREFIX}_${inverter_serial}_${key}"
+    else
+      entity_id="sensor.${ENTITY_PREFIX}_${key}"
+    fi
+
+    # Create friendly_name based on configuration
+    local friendly_name
+    if [ "$INCLUDE_SERIAL_IN_NAME" = "true" ]; then
+      friendly_name="${ENTITY_PREFIX^} ${inverter_serial} ${key}"
+    else
+      friendly_name="${ENTITY_PREFIX^} ${key}"
+    fi
 
     # Determine appropriate unit of measurement and device class
     local uom=""
@@ -298,7 +320,14 @@ determine_entity_registry_endpoint() {
 # Verify at least some entities were successfully created
 verify_entities_created() {
   local inverter_serial=$1
-  local sample_entity="sensor.sunsync_${inverter_serial}_battery_soc"
+
+  # Create sample entity name based on configuration
+  local sample_entity
+  if [ "$INCLUDE_SERIAL_IN_NAME" = "true" ]; then
+    sample_entity="sensor.${ENTITY_PREFIX}_${inverter_serial}_battery_soc"
+  else
+    sample_entity="sensor.${ENTITY_PREFIX}_battery_soc"
+  fi
 
   # Get the authentication header and API base URL
   local auth_header=$(get_auth_header)
@@ -335,9 +364,9 @@ verify_entities_created() {
     local our_entities=$(curl -s -X GET \
       -H "$auth_header" \
       -H "Content-Type: application/json" \
-      "$api_base_url/states" | grep -c "sunsync" || echo "0")
+      "$api_base_url/states" | grep -c "$ENTITY_PREFIX" || echo "0")
 
-    log_message "INFO" "Found approximately $our_entities SunSync entities"
+    log_message "INFO" "Found approximately $our_entities ${ENTITY_PREFIX^} entities"
 
     # Try to register the entity in the registry as a last resort
     register_entity_in_registry "$inverter_serial" "$sample_entity"
@@ -363,7 +392,15 @@ register_entity_in_registry() {
   # Use the determined endpoint (or default if not set)
   local endpoint="${ENTITY_REGISTRY_ENDPOINT:-config/entity_registry/entity}"
 
-  local payload="{\"entity_id\": \"$entity_id\", \"name\": \"SunSync $inverter_serial Battery SOC\", \"device_class\": \"battery\"}"
+  # Create friendly name based on configuration
+  local entity_name
+  if [ "$INCLUDE_SERIAL_IN_NAME" = "true" ]; then
+    entity_name="${ENTITY_PREFIX^} $inverter_serial Battery SOC"
+  else
+    entity_name="${ENTITY_PREFIX^} Battery SOC"
+  fi
+
+  local payload="{\"entity_id\": \"$entity_id\", \"name\": \"$entity_name\", \"device_class\": \"battery\"}"
 
   log_message "INFO" "Using entity registry endpoint: $api_base_url/$endpoint"
 
@@ -411,6 +448,9 @@ register_entity_in_registry() {
 # Add a diagnostic function to debug Home Assistant configuration
 diagnose_ha_setup() {
   log_message "INFO" "===== DIAGNOSTIC INFORMATION ====="
+  log_message "INFO" "Entity naming configuration:"
+  log_message "INFO" "  Prefix: $ENTITY_PREFIX"
+  log_message "INFO" "  Include serial numbers: $INCLUDE_SERIAL_IN_NAME"
 
   # Check which authentication method is available
   if [ -n "$SUPERVISOR_TOKEN" ]; then
@@ -473,9 +513,9 @@ diagnose_ha_setup() {
     local our_entities=$(curl -s -X GET \
       -H "$auth_header" \
       -H "Content-Type: application/json" \
-      "$api_base_url/states" | grep -c "sunsync" || echo "0")
+      "$api_base_url/states" | grep -c "$ENTITY_PREFIX" || echo "0")
 
-    log_message "INFO" "Found $our_entities SunSync entities in Home Assistant"
+    log_message "INFO" "Found $our_entities ${ENTITY_PREFIX^} entities in Home Assistant"
   fi
 
   log_message "INFO" "===== END DIAGNOSTIC INFORMATION ====="

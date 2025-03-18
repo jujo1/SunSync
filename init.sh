@@ -33,7 +33,7 @@ initialize_sunsync() {
 # Check for existing entities and create only what's missing
 check_and_create_entities() {
   local inverter_serial=$1
-  local entity_prefix="sensor.sunsync_${inverter_serial}_"
+  local entity_prefix="sensor.${ENTITY_PREFIX}_${inverter_serial}_"
 
   # Get the authentication header and API base URL
   local auth_header=$(get_auth_header)
@@ -92,8 +92,17 @@ create_placeholder_entities() {
 
   # Create each placeholder entity if it doesn't exist
   for key in "${key_entities[@]}"; do
-    local entity_id="sensor.sunsync_${inverter_serial}_${key}"
-    local friendly_name="SunSync ${inverter_serial} ${key}"
+    local entity_id
+    local friendly_name
+
+    if [ "$INCLUDE_SERIAL_IN_NAME" = "true" ]; then
+      entity_id="sensor.${ENTITY_PREFIX}_${inverter_serial}_${key}"
+      friendly_name="${ENTITY_PREFIX^} ${inverter_serial} ${key}"
+    else
+      entity_id="sensor.${ENTITY_PREFIX}_${key}"
+      friendly_name="${ENTITY_PREFIX^} ${key}"
+    fi
+
     local uom=""
     local device_class=""
 

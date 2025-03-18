@@ -16,6 +16,8 @@ REFRESH_RATE=300
 HTTP_CONNECT_TYPE="http"
 ENABLE_HTTPS=false
 ENABLE_VERBOSE_LOG=false
+ENTITY_PREFIX="sunsync"
+INCLUDE_SERIAL_IN_NAME=true
 VarCurrentDate=$(date '+%Y-%m-%d')
 VERSION="unknown"
 
@@ -47,6 +49,8 @@ load_config() {
   REFRESH_RATE=$(bashio::config 'Refresh_rate')
   ENABLE_HTTPS=$(bashio::config 'Enable_HTTPS')
   ENABLE_VERBOSE_LOG=$(bashio::config 'Enable_Verbose_Log')
+  ENTITY_PREFIX=$(bashio::config 'entity_prefix')
+  INCLUDE_SERIAL_IN_NAME=$(bashio::config 'include_serial_in_name')
 
   # Set proper HTTP connect type based on HTTPS setting
   if [ "$ENABLE_HTTPS" == "true" ]; then
@@ -63,6 +67,10 @@ load_config() {
     return 1
   fi
 
+  # Export entity naming configuration to make it available to other scripts
+  export ENTITY_PREFIX
+  export INCLUDE_SERIAL_IN_NAME
+
   if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
     log_message "INFO" "Verbose logging enabled"
     log_message "INFO" "Configuration loaded:"
@@ -70,6 +78,8 @@ load_config() {
     log_message "INFO" "- Serial(s): $SUNSYNK_SERIAL"
     log_message "INFO" "- Home Assistant: $HA_IP:$HA_PORT"
     log_message "INFO" "- Refresh rate: $REFRESH_RATE seconds"
+    log_message "INFO" "- Entity prefix: $ENTITY_PREFIX"
+    log_message "INFO" "- Include serial in name: $INCLUDE_SERIAL_IN_NAME"
     log_message "INFO" "- Version: $VERSION"
   else
     log_message "INFO" "Configuration loaded successfully"
