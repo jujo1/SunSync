@@ -7,6 +7,17 @@
 out/
 gen/
 
+# Remove these incorrect backslash entries
+# .\idea\
+# .\vscode\
+# .\__pycache__\
+# .\pytest_cache\
+
+# Add these correct entries instead
+.vscode/
+.pytest_cache/
+pycharm_helpers/
+
 # Python specific
 __pycache__/
 *.py[cod]
@@ -33,6 +44,7 @@ wheels/
 venv/
 ENV/
 env/
+.venv/
 
 # Logs
 *.log
