@@ -10,59 +10,78 @@ SERVER_API_BEARER_TOKEN=""
 SERVER_API_BEARER_TOKEN_SUCCESS=""
 SERVER_API_BEARER_TOKEN_MSG=""
 
+# Default retry configuration - used across all API functions
+DEFAULT_MAX_RETRIES=3
+DEFAULT_RETRY_DELAY=30
+
 # Get authentication token from Sunsynk API
 get_auth_token() {
-  echo "Getting bearer token from solar service provider's API."
+  log_message "INFO" "Getting bearer token from solar service provider's API."
 
   local retry_count=0
-  local max_retries=3
+  local output_file="token.json"
 
-  while true; do
-    # Fetch the token using curl with proper error handling
-    if ! curl -s -f -S -k -X POST -H "Content-Type: application/json" \
-         https://api.sunsynk.net/oauth/token \
-         -d '{"areaCode": "sunsynk","client_id": "csp-web","grant_type": "password","password": "'"$SUNSYNK_PASS"'","source": "sunsynk","username": "'"$SUNSYNK_USER"'"}' \
-         -o token.json; then
+  while [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; do
+    # Fetch the token using our standardized api_call function
+    if api_call "POST" "https://api.sunsynk.net/oauth/token" "$output_file" \
+         "Content-Type: application/json" \
+         "-d {\"areaCode\": \"sunsynk\",\"client_id\": \"csp-web\",\"grant_type\": \"password\",\"password\": \"$SUNSYNK_PASS\",\"source\": \"sunsynk\",\"username\": \"$SUNSYNK_USER\"}"; then
 
-      log_message "ERROR" "Error getting token (curl exit code $?). Retrying in 30 seconds..."
-      sleep 30
-
-      retry_count=$((retry_count + 1))
-      if [ $retry_count -ge $max_retries ]; then
-        log_message "ERROR" "Maximum retries reached. Cannot obtain auth token."
-        return 1
+      # Check if file exists before attempting to parse
+      if [ ! -f "$output_file" ]; then
+        log_message "ERROR" "Token response file not found"
+        retry_count=$((retry_count + 1))
+        sleep $DEFAULT_RETRY_DELAY
+        continue
       fi
-    else
+
       # Check verbose logging
       if [ "$ENABLE_VERBOSE_LOG" == "true" ]; then
         echo "Raw token data"
         echo ------------------------------------------------------------------------------
         echo "token.json"
-        cat token.json
+        cat "$output_file"
         echo ------------------------------------------------------------------------------
       fi
 
-      # Parse token from response
-      SERVER_API_BEARER_TOKEN=$(jq -r '.data.access_token' token.json)
-      SERVER_API_BEARER_TOKEN_SUCCESS=$(jq -r '.success' token.json)
+      # Parse token from response with error checking
+      if ! SERVER_API_BEARER_TOKEN=$(jq -r '.data.access_token // empty' "$output_file" 2>/dev/null); then
+        log_message "ERROR" "Failed to parse token data"
+        retry_count=$((retry_count + 1))
+        sleep $DEFAULT_RETRY_DELAY
+        continue
+      fi
 
-      if [ "$SERVER_API_BEARER_TOKEN_SUCCESS" == "true" ]; then
+      if ! SERVER_API_BEARER_TOKEN_SUCCESS=$(jq -r '.success // "false"' "$output_file" 2>/dev/null); then
+        log_message "ERROR" "Failed to parse token success status"
+        retry_count=$((retry_count + 1))
+        sleep $DEFAULT_RETRY_DELAY
+        continue
+      fi
+
+      if [ "$SERVER_API_BEARER_TOKEN_SUCCESS" == "true" ] && [ ! -z "$SERVER_API_BEARER_TOKEN" ]; then
         log_message "INFO" "Valid token retrieved."
         log_message "INFO" "Bearer Token length: ${#SERVER_API_BEARER_TOKEN}"
         return 0
       else
-        SERVER_API_BEARER_TOKEN_MSG=$(jq -r '.msg' token.json)
+        SERVER_API_BEARER_TOKEN_MSG=$(jq -r '.msg // "Unknown error"' "$output_file" 2>/dev/null)
         log_message "WARNING" "Invalid token received: $SERVER_API_BEARER_TOKEN_MSG. Retrying after a sleep..."
-        sleep 30
-
+        sleep $DEFAULT_RETRY_DELAY
         retry_count=$((retry_count + 1))
-        if [ $retry_count -ge $max_retries ]; then
-          log_message "ERROR" "Maximum retries reached. Cannot obtain auth token."
-          return 1
-        fi
       fi
+    else
+      log_message "ERROR" "Error getting token. Retrying in $DEFAULT_RETRY_DELAY seconds..."
+      sleep $DEFAULT_RETRY_DELAY
+      retry_count=$((retry_count + 1))
     fi
   done
+
+  if [ $retry_count -ge $DEFAULT_MAX_RETRIES ]; then
+    log_message "ERROR" "Maximum retries reached. Cannot obtain auth token."
+    return 1
+  fi
+
+  return 0
 }
 
 # Validate token
@@ -88,7 +107,6 @@ api_call() {
   local output_file=$3
   local headers=("${@:4}")  # All remaining args are headers
   local retry_count=0
-  local max_retries=3
   local data=""
 
   # Extract data if this is a POST request
@@ -102,7 +120,7 @@ api_call() {
     done
   fi
 
-  while [ $retry_count -lt $max_retries ]; do
+  while [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; do
     # Build the curl command dynamically
     local curl_cmd="curl -s -f -S -k -X $method"
 
@@ -123,19 +141,30 @@ api_call() {
 
     # Execute the command
     if eval $curl_cmd; then
+      # Check if the output file exists and is not empty (for responses that expect data)
+      if [ "$output_file" != "/dev/null" ] && [ ! -s "$output_file" ]; then
+        log_message "WARNING" "API call returned empty response: $method $url"
+        retry_count=$((retry_count + 1))
+
+        if [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; then
+          log_message "INFO" "Retrying in 5 seconds..."
+          sleep 5
+          continue
+        fi
+      fi
       return 0
     else
-      log_message "WARNING" "API call failed: $method $url, attempt $(($retry_count + 1))/$max_retries"
+      log_message "WARNING" "API call failed: $method $url, attempt $(($retry_count + 1))/$DEFAULT_MAX_RETRIES"
       retry_count=$((retry_count + 1))
 
-      if [ $retry_count -lt $max_retries ]; then
+      if [ $retry_count -lt $DEFAULT_MAX_RETRIES ]; then
         log_message "INFO" "Retrying in 5 seconds..."
         sleep 5
       fi
     fi
   done
 
-  log_message "ERROR" "API call failed after $max_retries attempts: $method $url"
+  log_message "ERROR" "API call failed after $DEFAULT_MAX_RETRIES attempts: $method $url"
   return 1
 }
 
@@ -143,6 +172,17 @@ api_call() {
 sunsynk_api_call() {
   local endpoint=$1
   local output_file=$2
+
+  # Validate parameters
+  if [ -z "$endpoint" ] || [ -z "$output_file" ]; then
+    log_message "ERROR" "Missing required parameters for sunsynk_api_call"
+    return 1
+  fi
+
+  if [ -z "$SERVER_API_BEARER_TOKEN" ]; then
+    log_message "ERROR" "No valid bearer token available for API call"
+    return 1
+  fi
 
   api_call "GET" "$endpoint" "$output_file" \
     "Content-Type: application/json" \
@@ -155,6 +195,17 @@ ha_api_call() {
   local method=${2:-"GET"}
   local data=${3:-""}
   local output_file=${4:-"/dev/null"}
+
+  # Validate parameters
+  if [ -z "$endpoint" ]; then
+    log_message "ERROR" "Missing required parameters for ha_api_call"
+    return 1
+  fi
+
+  if [ -z "$HA_TOKEN" ]; then
+    log_message "ERROR" "No valid HA token available for API call"
+    return 1
+  fi
 
   local url="$HTTP_CONNECT_TYPE://$HA_IP:$HA_PORT$endpoint"
 
@@ -174,7 +225,14 @@ ha_api_call() {
 send_inverter_settings() {
   local inverter_sn=$1
   local settings_data=$2
-  local endpoint="https://api.sunsynk.net/api/v1/inverter/$inverter_sn/settings"
+
+  # Validate parameters
+  if [ -z "$inverter_sn" ] || [ -z "$settings_data" ]; then
+    log_message "ERROR" "Missing required parameters for send_inverter_settings"
+    return 1
+  fi
+
+  local endpoint="https://api.sunsynk.net/api/v1/common/setting/$inverter_sn/set"
   local output_file="inverter_settings_response.json"
 
   log_message "INFO" "Sending settings to inverter $inverter_sn"
@@ -193,16 +251,28 @@ send_inverter_settings() {
   local status=$?
 
   if [ $status -eq 0 ]; then
+    # Check if response file exists
+    if [ ! -f "$output_file" ]; then
+      log_message "ERROR" "Settings response file not found"
+      return 1
+    fi
+
     # Check if response indicates success
-    if [ -f "$output_file" ]; then
-      local success=$(jq -r '.success' "$output_file" 2>/dev/null)
-      if [ "$success" == "true" ]; then
-        log_message "INFO" "Successfully updated inverter settings"
-      else
-        local error_msg=$(jq -r '.msg // "Unknown error"' "$output_file" 2>/dev/null)
-        log_message "ERROR" "Failed to update inverter settings: $error_msg"
-        return 1
+    local success
+    if ! success=$(jq -r '.success // "false"' "$output_file" 2>/dev/null); then
+      log_message "ERROR" "Failed to parse settings response"
+      return 1
+    fi
+
+    if [ "$success" == "true" ]; then
+      log_message "INFO" "Successfully updated inverter settings"
+    else
+      local error_msg
+      if ! error_msg=$(jq -r '.msg // "Unknown error"' "$output_file" 2>/dev/null); then
+        error_msg="Failed to parse error message"
       fi
+      log_message "ERROR" "Failed to update inverter settings: $error_msg"
+      return 1
     fi
   else
     log_message "ERROR" "Failed to send settings to inverter $inverter_sn"

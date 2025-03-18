@@ -215,52 +215,117 @@ create_settings_helper() {
   local entity_id="input_text.${ENTITY_PREFIX}_${inverter_serial}_inverter_settings"
   local friendly_name="${ENTITY_PREFIX^} ${inverter_serial} Settings"
 
+  # Validate parameter
+  if [ -z "$inverter_serial" ]; then
+    log_message "ERROR" "Missing inverter serial in create_settings_helper"
+    return 1
+  fi
+
   # Get the authentication header and API base URL
   local auth_header=$(get_auth_header)
   local api_base_url=$(get_api_base_url)
 
+  if [ -z "$auth_header" ] || [ -z "$api_base_url" ]; then
+    log_message "ERROR" "Failed to get authentication header or API base URL"
+    return 1
+  fi
+
   log_message "INFO" "Checking for settings helper entity: $entity_id"
 
   # Check if entity already exists
-  local entity_check=$(curl -s -X GET \
+  local entity_check=""
+  entity_check=$(curl -s -X GET \
     -H "$auth_header" \
     -H "Content-Type: application/json" \
     "$api_base_url/states/$entity_id")
 
-  if [[ "$entity_check" == *"not found"* ]] || [[ -z "$entity_check" ]]; then
+  local entity_exists=false
+  if [ ! -z "$entity_check" ] && [[ "$entity_check" != *"not found"* ]]; then
+    entity_exists=true
+  fi
+
+  if [ "$entity_exists" = false ]; then
     log_message "INFO" "Creating settings helper entity: $entity_id"
 
-    # Create the input_text helper via Home Assistant API
-    local payload="{
+    # First, create the helper via config flow API
+    local creation_payload="{\"flow_id\": \"${RANDOM}${RANDOM}\", \"handler\": \"input_text\", \"name\": \"${friendly_name}\", \"max\": 1024, \"min\": 0, \"mode\": \"text\", \"initial\": \"\"}"
+
+    # Step 1: Initialize config flow
+    local flow_id_result=""
+    flow_id_result=$(curl -s -X POST \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      -d "{\"handler\": \"input_text\"}" \
+      "$api_base_url/config/config_entries/flow")
+
+    if [ -z "$flow_id_result" ]; then
+      log_message "ERROR" "Failed to initialize config flow for input_text entity"
+      return 1
+    fi
+
+    # Extract flow_id from result
+    local flow_id=""
+    if ! flow_id=$(echo "$flow_id_result" | jq -r '.flow_id // empty' 2>/dev/null); then
+      log_message "ERROR" "Failed to parse flow_id from response"
+      return 1
+    fi
+
+    if [ -z "$flow_id" ]; then
+      log_message "ERROR" "Empty flow_id received"
+      return 1
+    }
+
+    # Step 2: Configure the input_text entity
+    local config_payload="{
       \"name\": \"${friendly_name}\",
-      \"icon\": \"mdi:solar-power-variant\",
       \"max\": 1024,
       \"min\": 0,
       \"mode\": \"text\",
       \"initial\": \"\"
     }"
 
-    local result=$(curl -s -X POST \
+    local config_result=""
+    config_result=$(curl -s -X POST \
       -H "$auth_header" \
       -H "Content-Type: application/json" \
-      -d "$payload" \
-      "$api_base_url/services/input_text/reload")
+      -d "$config_payload" \
+      "$api_base_url/config/config_entries/flow/$flow_id")
 
-    # Helper creation, then set its initial state
+    if [ -z "$config_result" ] || [[ "$config_result" == *"error"* ]]; then
+      log_message "ERROR" "Failed to configure input_text entity: ${config_result:-No response}"
+      return 1
+    }
+
+    # Step 3: Create the entity
     curl -s -X POST \
       -H "$auth_header" \
       -H "Content-Type: application/json" \
-      -d "{\"entity_id\": \"$entity_id\"}" \
-      "$api_base_url/services/input_text/create"
+      -d "{}" \
+      "$api_base_url/config/config_entries/flow/$flow_id/finish"
 
-    # Set the initial empty value
+    # Wait briefly for entity to be created
+    sleep 2
+
+    # Step 4: Set the initial empty value
     curl -s -X POST \
       -H "$auth_header" \
       -H "Content-Type: application/json" \
       -d "{\"entity_id\": \"$entity_id\", \"value\": \"\"}" \
       "$api_base_url/services/input_text/set_value"
 
-    log_message "INFO" "Settings helper entity created: $entity_id"
+    # Verify entity was created
+    local verify_check=""
+    verify_check=$(curl -s -X GET \
+      -H "$auth_header" \
+      -H "Content-Type: application/json" \
+      "$api_base_url/states/$entity_id")
+
+    if [ -z "$verify_check" ] || [[ "$verify_check" == *"not found"* ]]; then
+      log_message "WARNING" "Failed to verify settings helper entity was created: $entity_id"
+      return 1
+    } else {
+      log_message "INFO" "Settings helper entity created successfully: $entity_id"
+    }
   else
     log_message "INFO" "Settings helper entity already exists: $entity_id"
   fi
