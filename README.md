@@ -1,7 +1,7 @@
-# SunSync API Home Assistant Integration
+# SunSync Home Assistant Integration
 
 **Forked and Enhanced by:** [Julian Jones](github.com/jujo1)
-**Original Author:** [Martin Ville](github.com/martinville)
+**Original Author:** [Martin Ville](github.com/martinville)_
 
 ## Overview
 

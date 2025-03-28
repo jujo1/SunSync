@@ -5,11 +5,13 @@
 # Description: Functions for creating and updating Home Assistant entities
 # ==============================================================================
 
-# Initialize variables to avoid unbound variable errors
+SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN:-}"
+HA_TOKEN="${HA_TOKEN:-}"
+HA_IP="${HA_IP:-localhost}"
+HA_PORT="${HA_PORT:-8123}"
+HTTP_CONNECT_TYPE="${HTTP_CONNECT_TYPE:-http}"
+ENABLE_VERBOSE_LOG="${ENABLE_VERBOSE_LOG:-false}"
 API_BASE_URL_OVERRIDE=""
-
-# Default configuration for entity naming
-# These values can be overridden in the add-on configuration
 ENTITY_PREFIX="${ENTITY_PREFIX:-sunsync}"
 INCLUDE_SERIAL_IN_NAME="${INCLUDE_SERIAL_IN_NAME:-true}"
 

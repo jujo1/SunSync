@@ -1,3 +1,7 @@
+### 2025/03/28
+
+Version "1.0.15" - Fixed unbound variable issues in `entities.sh`.
+
 ### 2025/03/20
 
 Version "1.0.14" - Fork and Major Refactor
